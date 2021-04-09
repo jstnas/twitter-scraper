@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 import writer
 
 class Scraper:
+    _html_parser = 'html.parser'
+
     def __init__(self, user: str, instance: str):
         self._user = user
         self._instance = instance
@@ -38,12 +40,12 @@ class Scraper:
         return out
 
     def get_url(self, cursor:str=''):
-        url = f'{self._instance}/{self._user}/media{cursor}'
+        url = f'{self._instance}{self._user}/media{cursor}'
         return url
 
     def get_soup(self, url:str):
         page = requests.get(url)
-        soup = BeautifulSoup(page.content, 'html.parser')
+        soup = BeautifulSoup(page.content, self._html_parser)
         return soup
 
     def get_cursor(self, soup:BeautifulSoup):
@@ -59,6 +61,6 @@ if __name__ == '__main__':
     parser.add_argument('user', help='The user to scrape')
     parser.add_argument('-i', '--instance', type=str, help='The nitter instance to use')
     args = parser.parse_args()
-    instance = args.instance if args.instance is not None else 'https://nitter.42l.fr'
+    instance = args.instance if args.instance is not None else 'https://nitter.nixnet.services/'
     s = Scraper(args.user, instance)
     s.scrape()
