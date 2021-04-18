@@ -1,71 +1,106 @@
+import os
 import argparse
 import requests
 from bs4 import BeautifulSoup
-import writer
 
 class Scraper:
-    _html_parser = 'html.parser'
+    _parser = 'html.parser'
+    _images = []
 
     def __init__(self, user: str, instance: str):
         self._user = user
         self._instance = instance
+        self._image_dir = f'images/{user}/'
+        self._archive_path = f'{self._image_dir}archive.txt'
         return
 
     def scrape(self):
-        cursor = ''
-        image_urls = ''
-        while True:
-            url = self._get_url(cursor)
-            print(url)
-            soup = self.get_soup(url)
-            if soup is None:
-                return
-            image_urls += self.get_images(soup)
-            # Find next cursor.
-            cursor = self.get_cursor(soup)
-            if cursor is None:
-                break
-        writer.write_image_urls(image_urls, self._user)
-        writer.download_images(image_urls, self._user)
+        # Get image urls from nitter.
+        self._get_image_urls()
+        # Save images to a file.
+        self._download_images()
         return
 
-    def get_images(self, soup:BeautifulSoup):
-        out = ''
+    def _download_images(self):
+        count = len(self._images)
+        for i in range(count):
+            image = self._images[i]
+            filename = image.split('%')[1]
+            if self._in_archive(filename):
+                print(f'{filename} already in archive')
+                continue
+            url = f'{self._instance}{image}'
+            print(f'\r{i}/{count} {url}', end='')
+            r = requests.get(url)
+            r.raise_for_status()
+            # Check if directory exists.
+            if not os.path.isdir(self._image_dir):
+                os.makedirs(self._image_dir)
+            # Save image to file.
+            with open(f'{self._image_dir}{filename}', 'wb') as image_file:
+                image_file.write(r.content)
+            # Save href to archive.
+            self._save_to_archive(filename)
+        return
+
+    def _get_image_urls(self):
+        # Scrape nitter for image urls.
+        cursor = ''
+        self._images = []
+        while cursor is not None:
+            url = self._get_url(cursor)
+            print(url)
+            soup = self._get_soup(url)
+            self._get_images(soup)
+            cursor = self._get_cursor(soup)
+        # Return image urls.
+        print(f'Found {len(self._images)} images in total')
+        return
+
+    def _in_archive(self, image: str):
+        try:
+            with open(self._archive_path, 'r') as archive_file:
+                for line in archive_file:
+                    if image == line.strip('\n'):
+                        return True
+            return False
+        except FileNotFoundError:
+            return False
+
+    def _save_to_archive(self, image: str):
+        with open(self._archive_path, 'a') as archive_file:
+            archive_file.write(f'{image}\n')
+        return
+
+    def _get_url(self, cursor: str):
+        url = f'{self._instance}{self._user}/media{cursor}'
+        return url
+
+    def _get_soup(self, url: str):
+        r = requests.get(url)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.content, self._parser)
+        return soup
+
+    def _get_cursor(self, soup: str):
+        element = soup.find('a', string='Load more')
+        return None if element is None else element['href']
+
+    def _get_images(self, soup: str):
+        count = 0
         timeline = soup.find('div', class_='timeline')
         items = timeline.find_all('div', class_='timeline-item')
         for item in items:
             images = item.find_all('a', class_='still-image')
             for image in images:
-                href = image['href']
-                url = f'{self._instance}{href}'
-                out += f'{url}\n'
-        return out
-
-    def _get_url(self, cursor:str=''):
-        url = f'{self._instance}{self._user}/media{cursor}'
-        return url
-
-    def get_soup(self, url:str):
-        page = requests.get(url)
-        if page.status_code != 200:
-            print(f'page has status code {page.status_code}')
-            return None
-        soup = BeautifulSoup(page.content, self._html_parser)
-        return soup
-
-    def get_cursor(self, soup:BeautifulSoup):
-        elements = soup.find_all('div', class_='show-more')
-        for e in elements:
-            if e['class'] == ['show-more']:
-                cursor = e.a['href']
-                return cursor
-        return None
+                href = image['href'][1:]
+                self._images.append(href)
+                count += 1
+        print(f'Found {count} images')
+        return
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Scrape nitter for user images')
-    parser.add_argument('user', help='The user to scrape')
-    parser.add_argument('-i', '--instance', type=str, help='The nitter instance to use')
+    parser = argparse.ArgumentParser(description='Scrape twitter')
+    parser.add_argument('user', type=str, help='The user to scrape')
     args = parser.parse_args()
-    instance = args.instance if args.instance is not None else 'https://birdsite.xanny.family/'
-    s = Scraper(args.user, instance)
-    s.scrape()
+    Scraper(args.user, 'https://birdsite.xanny.family/').scrape()
