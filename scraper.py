@@ -30,7 +30,7 @@ class Scraper:
                 print(f'{filename} already in archive')
                 continue
             url = f'{self._instance}{image}'
-            print(f'\r{i}/{count} {url}', end='')
+            print(f'\r{i + 1}/{count} {filename}', end='')
             r = requests.get(url)
             r.raise_for_status()
             # Check if directory exists.
